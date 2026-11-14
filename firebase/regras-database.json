@@ -1,0 +1,25 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": "auth != null",
+        ".write": "auth != null && !newData.exists() && !data.child('players').exists()",
+        "meta": {
+          ".write": "auth != null && (!data.exists() || root.child('rooms').child($room).child('players').child(auth.uid).exists())",
+          ".validate": "$room.matches(/^[A-Z0-9]{5}$/) && newData.hasChildren(['state', 'route', 'cls'])"
+        },
+        "players": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['name', 'joined']) && newData.child('name').isString() && newData.child('name').val().length <= 14"
+          }
+        },
+        "pos": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        }
+      }
+    }
+  }
+}

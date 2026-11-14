@@ -147,6 +147,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
 .over{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(10,12,16,.72);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .card{width:min(440px,100%);background:var(--slab-solid);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
 .card header{background:var(--signal);color:var(--signal-ink);padding:14px 16px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.invite{background:var(--signal);color:var(--signal-ink);border-radius:8px;padding:10px 12px;font-size:15px;line-height:1.4}
+.mprow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.mprow input,.lblink input{width:100%;box-sizing:border-box;background:var(--slab-solid);border:1px solid var(--line);border-radius:6px;color:var(--fg);font:inherit;font-size:16px;padding:10px 12px;min-width:0}
+.mpbtn{background:none;border:1px solid var(--signal);color:var(--signal);border-radius:6px;padding:0 14px;font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:.04em;text-transform:uppercase}
+.mpbtn:disabled{opacity:.45}
+.lblink{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;margin-bottom:12px}
+.lblink button{border:1px solid var(--line);background:none;border-radius:6px;padding:0 10px;font-weight:600}
+.lbp{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.lbp div{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:8px;align-items:center;color:var(--fg)}
+.lbp i{width:12px;height:12px;border-radius:50%}
+.lbp small{color:var(--muted)}
 .abt{max-height:calc(100% - 40px);overflow:auto}
 .abody{padding:12px 16px 4px;font-size:14px;line-height:1.5;color:var(--muted)}
 .abody b{color:var(--fg)}
@@ -207,6 +218,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
 <div id="menu">
   <div class="mwrap">
     <div class="form colA">
+      <div class="invite" id="mpInvite" hidden>Convite para correr na sala <b id="mpInvCode"></b>. Escolha seu carro, digite seu nome e toque em <b>Entrar na sala</b>.</div>
       <div class="brand">
         <h1>Rota <span>Real</span></h1>
         <p>Escolha largada e chegada como num app de mapas. O jogo monta a corrida em 3D por esse trajeto, sobre fotos de satélite, em qualquer rua, cidade ou país.</p>
@@ -273,6 +285,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
       <div><p class="keys">Alto: sombras e mais árvores, com copas detalhadas. Leve: sem sombras, para celulares mais simples.</p>
       </div>
 
+      <div class="sect" id="mpSect">
+        <div class="lbl">Correr com amigos</div>
+        <div class="mprow"><input id="mpName" type="text" maxlength="14" placeholder="Seu nome" autocomplete="nickname" aria-label="Seu nome"><button class="mpbtn" id="mpCreate">Criar sala</button></div>
+        <p class="keys" id="mpNote">Crie uma sala com o trajeto escolhido e mande o link para quem vai correr.</p>
+      </div>
+
       <p class="sum" id="sum">Escolha a largada para começar.</p>
       <button class="go" id="go" disabled>Largar</button>
       <p class="keys"><button class="link" id="openAbout">Créditos e privacidade</button></p>
@@ -294,6 +312,19 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
     <div class="res" id="resRows"></div>
     <div class="facts"><span>Tempo <b id="resTime">—</b></span><span>Distância <b id="resDist">—</b></span><span>Média <b id="resAvg">—</b></span><span id="resRecBox">Recorde <b id="resRec">—</b></span></div>
     <div class="acts"><button id="resMenu">Trocar trajeto</button><button class="pri" id="resAgain">Correr de novo</button></div>
+  </div>
+</div>
+<div id="lobby" class="over" hidden>
+  <div class="card abt">
+    <header><b>Sala <span id="lbCode"></span></b><span id="lbRoute"></span></header>
+    <div class="abody">
+      <p id="lbInfo"></p>
+      <div class="lblink"><input id="lbLink" readonly aria-label="Link da sala"><button id="lbCopy">Copiar</button><button id="lbShare">Enviar</button></div>
+      <p><b>Pilotos na sala</b></p>
+      <div id="lbPlayers" class="lbp"></div>
+      <p class="keys" id="lbNote"></p>
+    </div>
+    <div class="acts"><button id="lbLeave">Sair da sala</button><button class="pri" id="lbGo">Largar</button></div>
   </div>
 </div>
 <div id="about" class="over" hidden>
@@ -331,7 +362,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
    Com a chave do ArcGIS Location Platform (uso comercial permitido): fotos de satélite, busca de endereço e rotas da Esri.
    Sem chave: serviços públicos gratuitos, só para uso pessoal e testes.
    A chave fica visível no código da página; restrinja-a ao domínio do jogo no painel da Esri. */
-const KEYS={arcgis:''};
+const KEYS={arcgis:'',
+  // configuração do app web do Firebase (Realtime Database + login anônimo) para o modo com amigos
+  firebase:null};
 const ARC=KEYS.arcgis;
 const ARCGEO='https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/';
 const SVC={
@@ -997,13 +1030,16 @@ function newCar(type,color,name,isPlayer,skill){const mesh=makeCarMesh(type,colo
   return {type,color,name,isPlayer,skill,mesh,x:0,z:0,h:0,v:0,steer:0,idx:0,lap:0,finished:false,finishT:0,stuck:0,lane:0,score:0,off:false,odo:0,y:0,pitch:0,roll:0,vd:0,slip:0,draft:0,hitCd:0,braking:false};}
 function setupRace(){
   if(race){for(const c of race.cars)disposeObj(c.mesh);if(race.ghost)disposeObj(race.ghost);}
-  const cars=[];const n=(RT?S.opp:0)+1;const pSlot=RT?Math.min(n-1,Math.floor(n/2)+1):0;let r=0;
-  for(let k=0;k<n;k++){const me=k===pSlot;const [nm,col]=me?['Você',S.color]:RIVALS[r++];
-    const ty=S.car==='F'?'F':me?S.model:MODELS[Math.floor(Math.random()*MODELS.length)][0];const car=newCar(ty,me?S.color:col,nm,me,me?1:0.86+Math.random()*0.11);
+  const mp=MP.on&&!!RT,ps=mp?mpSorted():null;if(mp&&!ps.some(p=>p[0]===MP.uid))ps.push([MP.uid,{}]);
+  const cars=[];const n=mp?ps.length:(RT?S.opp:0)+1;const pSlot=mp?ps.findIndex(p=>p[0]===MP.uid):RT?Math.min(n-1,Math.floor(n/2)+1):0;let r=0;
+  for(let k=0;k<n;k++){const me=k===pSlot;let car;
+    if(mp&&!me){const p=ps[k][1];car=newCar(MODELS.some(m=>m[0]===p.type)||p.type==='F'?p.type:'sedan',p.color||'#888',p.name||'Piloto',false,1);car.remote=ps[k][0];car.buf=[];}
+    else{const [nm,col]=me?['Você',S.color]:RIVALS[r++];
+    const ty=S.car==='F'?'F':me?S.model:MODELS[Math.floor(Math.random()*MODELS.length)][0];car=newCar(ty,me?S.color:col,nm,me,me?1:0.86+Math.random()*0.11);}
     if(RT){const i=Math.min(RT.N-2,2+Math.round((n-1-k)*1.7));const h=RT.head[i];const lat=(k%2?-1:1)*2.2;
       car.x=RT.px[i]+Math.cos(h)*lat;car.z=RT.pz[i]-Math.sin(h)*lat;car.h=car.vd=h;car.idx=i;car.lane=(k%2?-1:1)*(0.6+Math.random()*1.2);}
     cars.push(car);}
-  race={cars,player:cars[pSlot],t:RT?-3.2:0,best:0,lapStart:0,laps:RT&&RT.closed?S.laps:1,camH:cars[pSlot].h,msgT:0,doneT:0,hudT:0,navT:0,started:!RT,lostT:0,seekT:0,samples:[],sampleT:0,recKey:REC.key(),record:null,ghost:null,newRec:false,oldRec:null};
+  race={cars,player:cars[pSlot],t:RT?-3.2:0,best:0,lapStart:0,laps:RT&&RT.closed?S.laps:1,camH:cars[pSlot].h,msgT:0,doneT:0,hudT:0,navT:0,started:!RT,lostT:0,seekT:0,mp,samples:[],sampleT:0,recKey:REC.key(),record:null,ghost:null,newRec:false,oldRec:null};
   race.record=REC.get(race.recKey);if(race.record&&race.record.g&&race.record.g.length>=6)race.ghost=makeGhost();fxReset();
   makeDeco(RT?Math.min(RT.N-6,6+Math.round((n-1)*1.7)):0);
 }
@@ -1069,6 +1105,7 @@ function updateRace(dt){
   if(R.t<0){const n=Math.ceil(-R.t);const txt=n>3?'':String(n);if($('msg').textContent!==txt)showMsg(txt,1);return;}
   if(!R.started){R.started=true;showMsg('Vai!',0.9);}
   for(const c of R.cars){
+    if(c.remote){mpInterp(c);continue;}
     let lapBefore=c.lap,dist=0;
     if(RT){R.seekT-=c.isPlayer?dt:0;dist=track(c,false);if(c.isPlayer&&dist>70&&R.seekT<=0){R.seekT=0.5;dist=track(c,true);}}
     let inp,auto=false;
@@ -1113,6 +1150,7 @@ function hud(dt){
 function showResults(){
   const R=race,P=R.player,o=order();const pos=o.indexOf(P)+1;S.state='done';$('results').hidden=false;
   $('resPos').textContent=R.cars.length>1?pos+'º':fmt(P.finishT);$('resSub').textContent=R.cars.length>1?(pos===1?'Vitória':'Chegada'):'Tempo final';
+  if(race.mp)$('resAgain').textContent='Voltar à sala';
   $('resRows').innerHTML=R.cars.length>1?o.map((c,i)=>{const tm=c.finished?(i===0?fmt(c.finishT):'+'+(c.finishT-o[0].finishT).toFixed(1)+'s'):'na pista';
     return '<div class="rrow'+(c.isPlayer?' me':'')+'"><b>'+(i+1)+'</b><span>'+c.name+'</span><span class="tm">'+tm+'</span></div>';}).join(''):'';
   const dist=RT.closed?RT.len*R.laps:RT.len;$('resTime').textContent=fmt(P.finishT);$('resDist').textContent=fmtKm(dist);$('resAvg').textContent=Math.round(dist/P.finishT*3.6)+' km/h';
@@ -1123,7 +1161,7 @@ function showResults(){
 function carPose(c,vis){c.y=H(c.x,c.z);
   if(vis&&DEM.on){const fx=Math.sin(c.h),fz=Math.cos(c.h);c.pitch=Math.atan2(H(c.x+fx*1.6,c.z+fz*1.6)-H(c.x-fx*1.6,c.z-fz*1.6),3.2);c.roll=Math.atan2(H(c.x+fz*0.9,c.z-fx*0.9)-H(c.x-fz*0.9,c.z+fx*0.9),1.8);}else{c.pitch=0;c.roll=0;}}
 function syncMeshes(dt){const P=race.player;
-  for(const c of race.cars){const m=c.mesh;const vis=c===P||Math.hypot(c.x-P.x,c.z-P.z)<420;m.visible=vis;carPose(c,vis);if(!vis)continue;m.position.set(c.x,c.y,c.z);m.rotation.set(-c.pitch,c.h,c.roll-(SPEC[c.type].lean||0)*c.steer*clamp(Math.abs(c.v)/SPEC[c.type].max,0,1));
+  for(const c of race.cars){const m=c.mesh;const vis=!c.gone&&(c===P||Math.hypot(c.x-P.x,c.z-P.z)<420);m.visible=vis;carPose(c,vis);if(!vis)continue;m.position.set(c.x,c.y,c.z);m.rotation.set(-c.pitch,c.h,c.roll-(SPEC[c.type].lean||0)*c.steer*clamp(Math.abs(c.v)/SPEC[c.type].max,0,1));
     for(const w of m.userData.wheels)w.rotation.x+=c.v*dt/0.35;for(const f of m.userData.front)f.rotation.y=-c.steer*0.45;}
   ghostUpdate();fxUpdate(dt);
   if(RT){updateChevrons(P.idx);updateRibbon(P.idx);updateLamps(P.idx);}}
@@ -1147,7 +1185,7 @@ function introSetup(){const P=race.player;let cx=P.x,cz=P.z,rad=120;
 function introPose(o){const I=INTRO;o.px=I.cx+Math.sin(I.a)*I.R;o.py=I.h+I.gy;o.pz=I.cz+Math.cos(I.a)*I.R;o.tx=I.cx;o.ty=I.gy;o.tz=I.cz;}
 function swoopTick(dt){const I=INTRO;I.sw=Math.min(1,I.sw+dt/2);I.a+=dt*0.2;const e=I.sw*I.sw*(3-2*I.sw);race.camH=race.player.h;introPose(_pi);camPose(_po);const L=(a,b)=>a+(b-a)*e;
   camera.position.set(L(_pi.px,_po.px),L(_pi.py,_po.py),L(_pi.pz,_po.pz));camera.lookAt(L(_pi.tx,_po.tx),L(_pi.ty,_po.ty),L(_pi.tz,_po.tz));
-  scene.fog.near=L(ENV.fogN*2,ENV.fogN);scene.fog.far=L(ENV.fogF*1.9,ENV.fogF);if(I.sw>=1){S.state='race';lastT=performance.now();}}
+  scene.fog.near=L(ENV.fogN*2,ENV.fogN);scene.fog.far=L(ENV.fogF*1.9,ENV.fogF);if(I.sw>=1){S.state='race';lastT=performance.now();if(race.mp&&MP.meta)race.t=(srvNow()-MP.meta.start)/1000;/* relógio da sala: todos largam juntos */}}
 function followEnv(){const P=race.player;sky.position.copy(camera.position);stars.position.copy(camera.position);clouds.position.set(camera.position.x,0,camera.position.z);
   const hi=S.state==='loading',bx=hi?INTRO.cx:P.x,bz=hi?INTRO.cz:P.z;base.position.set(bx,DEM.on?H(bx,bz)-5:-0.02,bz);
   if(ENV.shadow){shadowUpdate(P);sun.position.set(P.x+SUNDIR.x*420,P.y+SUNDIR.y*420,P.z+SUNDIR.z*420);sun.target.position.set(P.x,P.y,P.z);}
@@ -1189,6 +1227,7 @@ async function begin(){
   $('loading').hidden=false;$('lTitle').textContent='Preparando';$('lSub').textContent='Lendo o relevo do terreno…';$('lBar').style.width='5%';$('lBar').parentNode.hidden=false;$('introGo').disabled=true;audioStart();
   await demInit();if(tok!==beginTok)return;
   applyTOD();resetWorld();setupRace();introSetup();S.state='loading';loadT=0;lastT=performance.now();
+  $('introGo').hidden=!!(race&&race.mp);$('introBack').textContent=race&&race.mp?'Sair da sala':'Trocar trajeto';
   $('lTitle').textContent=RT?'Vista aérea do trajeto':'Vista aérea';$('lSub').textContent='Montando o mundo em 3D…';$('lBar').style.width='10%';
   camera.fov=55;camera.updateProjectionMatrix();introPose(_pi);camera.position.set(_pi.px,_pi.py,_pi.pz);camera.lookAt(_pi.tx,_pi.ty,_pi.tz);
 }
@@ -1198,6 +1237,7 @@ function loadingTick(dt){
   let vtReady=true;if(!RT){vtReady=W.vtFail||loadT>9;for(const r of W.vt.values())if(r.stage>=1)vtReady=true;}
   $('lBar').style.width=Math.round(10+90*Math.min(1,(tot?done/tot:0)*0.8+(vtReady?0.2:0)))+'%';
   if(imgReady&&vtReady&&loadT>1.5&&$('introGo').disabled){$('introGo').disabled=false;$('lBar').parentNode.hidden=true;$('lSub').textContent=RT?'Confira o percurso e toque em Largar.':'Toque em Largar para começar o passeio.';}
+  if(race.mp&&!$('introGo').disabled&&MP.meta){const left=(MP.meta.start-srvNow())/1000;$('lSub').textContent=left>0?'Largada em '+Math.ceil(left)+' s':'Largando…';if(left<5.3)INTRO.go=true;}
   if(INTRO.go){
     if(!RT){const P=race.player;const n=nearestWide(P.x,P.z);if(n){P.x=n.px;P.z=n.pz;P.h=P.vd=Math.atan2(n.dx,n.dz);race.camH=P.h;}}
     $('loading').hidden=true;$('hud').hidden=false;S.state='swoop';}
@@ -1214,7 +1254,7 @@ function loop(now){
   if(race&&S.state!=='menu'){
     if(S.state==='loading'){loadingTick(dt);syncMeshes(0);}
     else if(S.state==='swoop'){swoopTick(dt);syncMeshes(0);}
-    else if(S.state==='race'||S.state==='done'){const n=Math.ceil(dt/0.017);for(let i=0;i<n;i++)updateRace(dt/n);syncMeshes(dt);chaseCam(dt);drawMini();hud(dt);audioUpdate();}
+    else if(S.state==='race'||S.state==='done'){const n=Math.ceil(dt/0.017);for(let i=0;i<n;i++)updateRace(dt/n);if(race&&race.mp)mpTick(dt);syncMeshes(dt);chaseCam(dt);drawMini();hud(dt);audioUpdate();}
     followEnv();worldTick();renderer.render(scene,camera);
   }
   requestAnimationFrame(loop);
@@ -1407,19 +1447,116 @@ function initMenu(){
 // botão Voltar do aparelho: da corrida volta ao menu, em vez de fechar o jogo
 function goMenu(){try{if(history.state&&history.state.race){history.back();return;}}catch(e){}backToMenu();}
 addEventListener('popstate',()=>{if(!$('menu').hidden)return;backToMenu();});
+/* =====================================================================
+   Multijogador: salas no Firebase Realtime Database com login anônimo
+   rooms/{código}/meta    trajeto, classe de carro, horário, estado e hora da largada
+   rooms/{código}/players  nome, cor, carro e entrada de cada piloto
+   rooms/{código}/pos      posição de cada piloto, enviada 8 vezes por segundo
+   ===================================================================== */
+const MP={on:false,code:null,uid:null,db:null,host:false,players:{},meta:null,lastStart:0,offset:0,subs:[],sendT:0,resT:0,invite:null};
+const srvNow=()=>Date.now()+MP.offset;
+function fbLoad(){if(window.firebase&&firebase.database)return Promise.resolve();const base='https://www.gstatic.com/firebasejs/10.12.2/';
+  const load=s=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=base+s;e.onload=ok;e.onerror=()=>no(new Error(s));document.head.appendChild(e);});
+  return load('firebase-app-compat.js').then(()=>load('firebase-auth-compat.js')).then(()=>load('firebase-database-compat.js'));}
+async function mpConnect(){if(MP.db)return;if(!KEYS.firebase)throw new Error('cfg');await fbLoad();if(!firebase.apps.length)firebase.initializeApp(KEYS.firebase);
+  const c=await firebase.auth().signInAnonymously();MP.uid=c.user.uid;MP.db=firebase.database();const o=await MP.db.ref('.info/serverTimeOffset').once('value');MP.offset=o.val()||0;}
+const mpRef=p=>MP.db.ref('rooms/'+MP.code+(p?'/'+p:''));
+function encPoly(c){const A='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';let o='',px=0,py=0;
+  const e=v=>{v=v<0?-v*2-1:v*2;let s='';do{let d=v%32;v=Math.floor(v/32);if(v)d+=32;s+=A[d];}while(v);return s;};
+  for(const p of c){const x=Math.round(p[0]*1e5),y=Math.round(p[1]*1e5);o+=e(x-px)+e(y-py);px=x;py=y;}return o;}
+function mpName(){const v=($('mpName').value||'').trim().slice(0,14);return v||('Piloto '+(MP.uid||'xxx').slice(-3).toUpperCase());}
+function mpNote(t,err){const n=$('mpNote');n.textContent=t;n.style.color=err?'#ffb4a8':'';}
+function mpRoutePayload(){const r=PL.route,named=PL.pts.filter(p=>p.lat!=null);
+  const name=PL.fixed||((named[0]&&named[0].q||'Largada').split(',')[0]+(named.length>1?' → '+(named[named.length-1].q||'Chegada').split(',')[0]:''));
+  return {name:name.slice(0,80),poly:encPoly(r.coords),closed:!!r.closed,hw:r.hw||0,dist:Math.round(r.dist),laps:r.closed?S.laps:1};}
+function mpApplyRoute(r){
+  const coords=decPoly(r.poly);coords.pop();clearTimeout(rrT);PL.rseq++;PL.busy=false;PL.fixed=r.name;S.laps=r.laps||1;$('circ').checked=!!r.closed;
+  PL.pts=[{q:r.name,lat:coords[0][1],lon:coords[0][0]},{q:'',lat:null,lon:null}];PL.active=1;renderPts();refreshMarkers();
+  PL.route={coords,dist:r.dist,closed:!!r.closed,hw:r.hw||undefined};if(PL.line){PL.line.remove();PL.line=null;}
+  if(PL.map){PL.line=L.polyline(coords.map(c=>[c[1],c[0]]),{color:'#ffb300',weight:5,opacity:.95}).addTo(PL.map);PL.map.fitBounds(PL.line.getBounds(),{padding:[30,30]});}
+  $('lapN').textContent=r.closed?S.laps:1;updateSum();goState();}
+function mpSorted(){return Object.entries(MP.players||{}).sort((a,b)=>(a[1].joined||0)-(b[1].joined||0)||(a[0]<b[0]?-1:1));}
+function mpRenderLobby(){
+  if(!MP.on||!MP.meta)return;const r=MP.meta.route,ps=mpSorted();MP.host=!!ps.length&&ps[0][0]===MP.uid;
+  $('lbCode').textContent=MP.code;$('lbRoute').textContent=MP.meta.cls==='F'?'Fórmula':'Turismo';
+  $('lbInfo').textContent=r.name+' · '+fmtKm(r.dist*(r.closed?r.laps:1))+(r.closed?' em '+r.laps+(r.laps>1?' voltas':' volta'):'');
+  $('lbLink').value=location.origin+location.pathname+'?sala='+MP.code;
+  $('lbPlayers').innerHTML='';for(const [id,p] of ps){const d=document.createElement('div');const i=document.createElement('i');i.style.background=p.color||'#888';const n=document.createElement('span');
+    n.textContent=(p.name||'Piloto')+(id===MP.uid?' (você)':'');const s=document.createElement('small');const m=MODELS.find(x=>x[0]===p.type);s.textContent=(id===ps[0][0]?'anfitrião · ':'')+(p.type==='F'?'Fórmula':m?m[1]:'');d.append(i,n,s);$('lbPlayers').appendChild(d);}
+  const racing=S.state!=='menu';$('lbGo').hidden=!MP.host;$('lbGo').disabled=racing;
+  $('lbNote').textContent=MP.host?(ps.length<2?'Mande o link para seus amigos. Você também pode largar sozinho.':'Quando todos estiverem aqui, toque em Largar.'):'Aguardando o anfitrião largar.';
+}
+function mpSubscribe(){
+  const on=(p,cb)=>{const r=mpRef(p);r.on('value',cb);MP.subs.push(()=>r.off('value',cb));};
+  on('meta',s=>{const v=s.val();if(!v){mpLeave('A sala foi encerrada.');return;}MP.meta=v;mpRenderLobby();
+    if(v.state==='start'&&v.start&&v.start!==MP.lastStart){MP.lastStart=v.start;mpStartRace();}});
+  on('players',s=>{MP.players=s.val()||{};mpRenderLobby();
+    if(race&&race.mp)for(const c of race.cars)if(c.remote&&!MP.players[c.remote]&&!c.gone){c.gone=true;c.name+=' (saiu)';c.score=-1e9;}});
+  on('pos',s=>{const v=s.val()||{};if(!race||!race.mp)return;for(const c of race.cars){if(!c.remote)continue;const q=v[c.remote];if(!q||!q.ts)continue;
+    const b=c.buf;if(!b.length||b[b.length-1].ts<q.ts){b.push(q);if(b.length>40)b.shift();}}});
+}
+async function mpJoin(code){
+  mpNote('Entrando na sala…');$('mpCreate').disabled=true;
+  try{await mpConnect();MP.code=code;const meta=(await mpRef('meta').once('value')).val();if(!meta){mpNote('Essa sala não existe mais. Peça um link novo.',true);MP.code=null;$('mpCreate').disabled=false;return;}
+    const ps=(await mpRef('players').once('value')).val()||{};if(Object.keys(ps).length>=8&&!ps[MP.uid]){mpNote('A sala está cheia (8 pilotos).',true);MP.code=null;$('mpCreate').disabled=false;return;}
+    if(S.car!==meta.cls){S.car=meta.cls;$('carF').setAttribute('aria-pressed',S.car==='F');$('carS').setAttribute('aria-pressed',S.car!=='F');$('modelBox').hidden=S.car==='F';}
+    store.set('rr-name',$('mpName').value.trim());
+    const me=mpRef('players/'+MP.uid);await me.set({name:mpName(),color:S.color,type:carKey(),joined:firebase.database.ServerValue.TIMESTAMP});
+    me.onDisconnect().remove();mpRef('pos/'+MP.uid).onDisconnect().remove();
+    MP.on=true;MP.meta=meta;MP.lastStart=meta.start||0;S.tod=meta.tod||S.tod;mpApplyRoute(meta.route);
+    try{history.replaceState(history.state,'','?sala='+code);}catch(e){}
+    $('mpInvite').hidden=true;mpSubscribe();$('lobby').hidden=false;mpRenderLobby();mpNote('Você está na sala '+code+'.');
+  }catch(e){mpNote(e.message==='cfg'?'O modo com amigos ainda não foi ativado neste jogo.':'Não consegui conectar à sala. Confira a internet e tente de novo.',true);}
+  $('mpCreate').disabled=false;
+}
+async function mpCreate(){
+  if(MP.invite)return mpJoin(MP.invite);
+  if(!PL.route){mpNote('Escolha um trajeto ou circuito antes de criar a sala.',true);return;}
+  mpNote('Criando a sala…');$('mpCreate').disabled=true;
+  try{await mpConnect();const AB='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let code='';
+    for(let k=0;k<6;k++){code='';for(let i=0;i<5;i++)code+=AB[Math.floor(Math.random()*AB.length)];MP.code=code;if(!(await mpRef('meta').once('value')).val())break;}
+    await mpRef('meta').set({created:firebase.database.ServerValue.TIMESTAMP,state:'lobby',start:0,cls:S.car==='F'?'F':'S',tod:S.tod,route:mpRoutePayload()});
+    await mpJoin(code);
+  }catch(e){mpNote(e.message==='cfg'?'O modo com amigos ainda não foi ativado neste jogo.':'Não consegui criar a sala. Confira a internet e tente de novo.',true);$('mpCreate').disabled=false;}
+}
+async function mpLeave(msg){
+  const code=MP.code,uid=MP.uid,was=MP.on;MP.subs.forEach(f=>f());MP.subs=[];MP.on=false;MP.invite=null;$('lobby').hidden=true;
+  try{history.replaceState(history.state,'',location.pathname);}catch(e){}
+  $('mpCreate').textContent='Criar sala';$('mpInvite').hidden=true;mpNote(msg||'Você saiu da sala.');
+  if(was&&MP.db&&code){try{await MP.db.ref('rooms/'+code+'/players/'+uid).remove();await MP.db.ref('rooms/'+code+'/pos/'+uid).remove();
+    const rest=(await MP.db.ref('rooms/'+code+'/players').once('value')).val();if(!rest)await MP.db.ref('rooms/'+code).remove();}catch(e){}}
+  MP.code=null;
+}
+function mpStartRace(){
+  if(!MP.on)return;$('lobby').hidden=true;$('results').hidden=true;$('pause').hidden=true;mpApplyRoute(MP.meta.route);begin();
+}
+// posição dos outros: desenha 220 ms no passado, interpolando entre as duas amostras recebidas
+function mpInterp(c){const b=c.buf;if(!b.length)return;const rt=srvNow()-220;while(b.length>2&&b[1].ts<rt-1500)b.shift();
+  let k=-1;for(let i=0;i<b.length;i++)if(b[i].ts<=rt)k=i;const last=b[b.length-1];
+  if(k<0){const q=b[0];c.x=q.x;c.z=q.z;c.h=q.h;c.v=q.v;}
+  else if(k===b.length-1){const q=b[k],dtx=Math.min(0.4,(rt-q.ts)/1000);c.x=q.x+Math.sin(q.h)*q.v*dtx;c.z=q.z+Math.cos(q.h)*q.v*dtx;c.h=q.h;c.v=q.v;}
+  else{const a=b[k],q=b[k+1],u=(rt-a.ts)/Math.max(1,q.ts-a.ts);c.x=a.x+(q.x-a.x)*u;c.z=a.z+(q.z-a.z)*u;c.h=a.h+wrapA(q.h-a.h)*u;c.v=a.v+(q.v-a.v)*u;}
+  c.vd=c.h;c.steer=last.s||0;c.idx=last.i||0;c.lap=last.l||0;if(last.f>0&&!c.finished){c.finished=true;c.finishT=last.f;}
+  c.score=c.gone?-1e9:c.finished?1e12-c.finishT:c.lap*RT.N+c.idx;}
+function mpTick(dt){
+  if(!MP.on||!MP.db)return;const P=race.player;MP.sendT-=dt;
+  if(MP.sendT<=0&&race.t>-4){MP.sendT=0.125;mpRef('pos/'+MP.uid).set({ts:srvNow(),x:Math.round(P.x*10)/10,z:Math.round(P.z*10)/10,h:Math.round(P.h*1000)/1000,v:Math.round(P.v*10)/10,s:Math.round(P.steer*100)/100,i:P.idx,l:P.lap,f:P.finished?Math.round(P.finishT*100)/100:0}).catch(()=>{});}
+  if(S.state==='done'){MP.resT-=dt;if(MP.resT<=0){MP.resT=1;showResults();}}
+}
 function backToMenu(){
   beginTok++;if(race){for(const c of race.cars)disposeObj(c.mesh);if(race.ghost)disposeObj(race.ghost);race=null;}fxReset();if(deco){disposeObj(deco.group);deco=null;}resetWorld();RT=null;S.state='menu';
   $('menu').hidden=false;$('hud').hidden=true;$('results').hidden=true;$('pause').hidden=true;$('loading').hidden=true;audioMute();if(PL.map)setTimeout(()=>PL.map.invalidateSize(),50);
+  if(MP.on){$('lobby').hidden=false;mpRenderLobby();}
 }
-function pause(){if(S.state!=='race')return;S.state='paused';$('pInfo').textContent=RT?fmtKm(Math.max(0,(RT.N-1-race.player.idx)*4))+' até o fim':'Passeio livre';$('pause').hidden=false;audioMute();}
+function pause(){if(S.state!=='race')return;S.state='paused';$('pAgain').hidden=!!(race&&race.mp);$('pInfo').textContent=RT?fmtKm(Math.max(0,(RT.N-1-race.player.idx)*4))+' até o fim':'Passeio livre';$('pause').hidden=false;audioMute();}
 
 const nextCam=()=>{if(!race)return;S.cam=(S.cam+1)%3;if(S.state==='race'&&race.t>=0)showMsg(CAMS[S.cam],0.9,'small');};
 $('bMenu').onclick=pause;$('bReset').onclick=resetPlayer;$('bCam').onclick=nextCam;
 $('bSound').onclick=()=>{S.sound=!S.sound;$('bSound').style.opacity=S.sound?1:0.45;if(S.sound)audioStart();else audioMute();};
-$('pGo').onclick=()=>{$('pause').hidden=true;S.state='race';lastT=performance.now();audioStart();};
+$('pGo').onclick=()=>{$('pause').hidden=true;S.state='race';lastT=performance.now();if(race&&race.mp&&MP.meta)race.t=(srvNow()-MP.meta.start)/1000;audioStart();};
 $('pReset').onclick=()=>{resetPlayer();$('pGo').onclick();};
-$('introGo').onclick=()=>{if(INTRO&&S.state==='loading')INTRO.go=true;};$('introBack').onclick=goMenu;
-$('pAgain').onclick=begin;$('pMenu').onclick=goMenu;$('resAgain').onclick=begin;$('resMenu').onclick=goMenu;
+$('introGo').onclick=()=>{if(INTRO&&S.state==='loading')INTRO.go=true;};$('introBack').onclick=()=>{if(MP.on)mpLeave();goMenu();};
+$('pAgain').onclick=()=>{if(!MP.on)begin();};$('pMenu').onclick=()=>{if(MP.on)mpLeave();goMenu();};$('resAgain').onclick=()=>{if(MP.on)goMenu();else begin();};$('resMenu').onclick=()=>{if(MP.on)mpLeave();goMenu();};
 addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;keys[e.code]=true;
   if(e.code.startsWith('Arrow')&&S.state==='race')e.preventDefault();if(e.code==='KeyR')resetPlayer();if(e.code==='KeyC')nextCam();if(e.code==='Escape')pause();});
 addEventListener('keyup',e=>{keys[e.code]=false;});
@@ -1429,6 +1566,16 @@ const pad=(id,k)=>{const b=$(id);const on=e=>{e.preventDefault();touch[k]=1;b.cl
   b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);b.addEventListener('contextmenu',e=>e.preventDefault());};
 pad('pL','L');pad('pR','R');pad('pA','A');pad('pB','B');
 $('attr').textContent=(ARC?'Powered by Esri · ':'')+'Imagens Esri, Maxar, Earthstar Geographics · Mapa OpenFreeMap © OpenMapTiles © OpenStreetMap · Relevo Mapzen/AWS'+(ARC?'':' · Rotas OSRM');
+$('mpName').value=store.get('rr-name');$('mpName').onchange=()=>store.set('rr-name',$('mpName').value.trim());
+$('mpCreate').onclick=mpCreate;$('lbLeave').onclick=()=>mpLeave();
+$('lbGo').onclick=()=>{if(!MP.on||!MP.host)return;$('lbGo').disabled=true;mpRef('meta').update({state:'start',start:srvNow()+15000}).catch(()=>{$('lbGo').disabled=false;$('lbNote').textContent='Não consegui largar. Confira a internet.';});};
+$('lbCopy').onclick=()=>{const v=$('lbLink').value;(navigator.clipboard?navigator.clipboard.writeText(v):Promise.reject()).then(()=>{$('lbCopy').textContent='Copiado';setTimeout(()=>$('lbCopy').textContent='Copiar',1500);}).catch(()=>{$('lbLink').select();});};
+$('lbShare').onclick=()=>{const url=$('lbLink').value,text='Corre comigo no Rota Real! Sala '+MP.code;if(navigator.share)navigator.share({title:'Rota Real',text,url}).catch(()=>{});else window.open('https://wa.me/?text='+encodeURIComponent(text+' '+url),'_blank');};
+if(!KEYS.firebase){$('mpCreate').disabled=true;mpNote('O modo com amigos ainda não foi ativado neste jogo.');}
+{const q=new URLSearchParams(location.search).get('sala');if(q&&/^[A-Z0-9]{5}$/.test(q.toUpperCase())){MP.invite=q.toUpperCase();$('mpInvCode').textContent=MP.invite;$('mpInvite').hidden=false;$('mpCreate').textContent='Entrar na sala';
+  if(!KEYS.firebase){$('mpInvite').textContent='Esse link é de uma sala para correr com amigos, mas o modo com amigos ainda não foi ativado neste jogo.';}
+  else mpConnect().then(()=>{MP.code=MP.invite;return mpRef('meta').once('value');}).then(s=>{const m=s.val();MP.code=null;if(!m){mpNote('Essa sala não existe mais. Peça um link novo.',true);return;}
+    if(S.car!==m.cls)$((m.cls==='F'?'carF':'carS')).click();mpApplyRoute(m.route);}).catch(()=>mpNote('Não consegui conectar à sala. Confira a internet.',true));}}
 initMenu();requestAnimationFrame(loop);
 </script>
 </body>
