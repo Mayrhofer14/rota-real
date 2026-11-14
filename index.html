@@ -4,9 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Rota Real</title>
+<meta name="description" content="Corrida 3D no navegador: escolha qualquer rua do mundo ou um circuito de Fórmula 1 e Indy e corra contra o grid, sobre fotos de satélite com relevo real.">
+<meta name="theme-color" content="#101318">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Rota Real">
+<meta property="og:title" content="Rota Real: corrida 3D em ruas e circuitos reais">
+<meta property="og:description" content="Corrida 3D no navegador: escolha qualquer rua do mundo ou um circuito de Fórmula 1 e Indy e corra contra o grid, sobre fotos de satélite com relevo real.">
+<meta property="og:image" content="https://mayrhofer14.github.io/rota-real/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://mayrhofer14.github.io/rota-real/">
+<meta property="og:locale" content="pt_BR">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;800&family=Barlow:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.css">
 <style>
 /* Layout: planejador de rota (formulário + mapa) no menu; na corrida, a foto de satélite ocupa a tela e o HUD fica nos cantos como numa transmissão */
 :root{
@@ -117,6 +135,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
 .over{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(10,12,16,.72);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .card{width:min(440px,100%);background:var(--slab-solid);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
 .card header{background:var(--signal);color:var(--signal-ink);padding:14px 16px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.abt{max-height:calc(100% - 40px);overflow:auto}
+.abody{padding:12px 16px 4px;font-size:14px;line-height:1.5;color:var(--muted)}
+.abody b{color:var(--fg)}
+.abody ul{margin:0 0 10px;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.abody p{margin:0 0 8px}
 .card header b{font-family:var(--display);font-weight:800;font-style:italic;font-size:40px;line-height:1}
 .card header span{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.1em;text-transform:uppercase;text-align:right}
 .res{display:flex;flex-direction:column;padding:8px 0}
@@ -162,7 +185,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
   </div>
   <div class="msg" id="msg"></div>
   <div class="speed"><i id="draft" hidden>VÁCUO</i><b id="spd">0</b><span>KM/H</span></div>
-  <div class="attr">Imagens © Esri, Maxar, Earthstar Geographics · Mapa © OpenStreetMap, OpenMapTiles, OpenFreeMap · Rotas OSRM</div>
+  <div class="attr" id="attr">Imagens Esri, Maxar, Earthstar Geographics · Mapa OpenFreeMap © OpenMapTiles © OpenStreetMap · Relevo Mapzen/AWS</div>
   <div class="pads">
     <div class="grp"><button class="st" id="pL" aria-label="Virar à esquerda">◀</button><button class="st" id="pR" aria-label="Virar à direita">▶</button></div>
     <div class="grp"><button class="ped" id="pB">FREIO</button><button class="ped gas" id="pA">ACELERA</button></div>
@@ -237,7 +260,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
 
       <p class="sum" id="sum">Escolha a largada para começar.</p>
       <button class="go" id="go" disabled>Largar</button>
-      <p class="keys">Teclado: setas ou WASD · C troca a câmera · freio + curva derrapa · R volta para a rota · Esc pausa. No celular, use os botões na tela. O jogo baixa mapas enquanto você corre: prefira Wi-Fi.</p>
+      <p class="keys"><button class="link" id="openAbout">Créditos e privacidade</button></p>
+    <p class="keys">Teclado: setas ou WASD · C troca a câmera · freio + curva derrapa · R volta para a rota · Esc pausa. No celular, use os botões na tela. O jogo baixa mapas enquanto você corre: prefira Wi-Fi.</p>
     </div>
   </div>
 </div>
@@ -257,24 +281,51 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
     <div class="acts"><button id="resMenu">Trocar trajeto</button><button class="pri" id="resAgain">Correr de novo</button></div>
   </div>
 </div>
+<div id="about" class="over" hidden>
+  <div class="card abt">
+    <header><b>Rota Real</b><span>Créditos</span></header>
+    <div class="abody">
+      <p><b>Mapas e dados</b></p>
+      <ul>
+        <li id="abSat">Fotos de satélite e mapa: Esri, Maxar, Earthstar Geographics e comunidade de usuários do GIS.</li>
+        <li id="abGeo">Busca de endereços e rotas: <span id="abGeoTxt"></span></li>
+        <li>Ruas, prédios e nomes: OpenFreeMap © OpenMapTiles, dados © colaboradores do OpenStreetMap (ODbL).</li>
+        <li>Relevo: Terrain Tiles (Mapzen, AWS Open Data), com dados SRTM, GMTED, ETOPO1 e outros.</li>
+        <li>Traçados de Fórmula 1: projeto f1-circuits de Tomislav Bacinger (licença MIT). Traçados da Indy: OpenStreetMap.</li>
+        <li>Fórmula 1, Indy e nomes de circuitos pertencem aos seus donos. Este jogo não tem ligação com eles.</li>
+      </ul>
+      <p><b>Privacidade</b></p>
+      <p>O jogo não pede cadastro e não coleta dados pessoais. Seus recordes ficam guardados só neste aparelho. Os endereços que você digita e o trajeto são enviados aos serviços de mapa acima para fazer a busca, a rota e baixar as imagens. A localização do aparelho só é usada se você tocar em "Usar minha localização".</p>
+    </div>
+    <div class="acts"><button class="pri" id="closeAbout">Fechar</button><span></span></div>
+  </div>
+</div>
 <div id="loading" hidden><div><b id="lTitle">Carregando</b><span id="lSub"></span><div class="lbar"><i id="lBar"></i></div>
   <div class="iacts"><button id="introBack">Trocar trajeto</button><button class="pri" id="introGo" disabled>Largar</button></div></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.10.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.3/leaflet-maplibre-gl.js"></script>
 <script>
 'use strict';
 /* =====================================================================
    Serviços usados (todos gratuitos e sem chave)
    ===================================================================== */
+/* Fornecedores de mapa.
+   Com a chave do ArcGIS Location Platform (uso comercial permitido): fotos de satélite, busca de endereço e rotas da Esri.
+   Sem chave: serviços públicos gratuitos, só para uso pessoal e testes.
+   A chave fica visível no código da página; restrinja-a ao domínio do jogo no painel da Esri. */
+const KEYS={arcgis:''};
+const ARC=KEYS.arcgis;
+const ARCGEO='https://geocode-api.arcgis.com/arcgis/rest/services/World/GeocodeServer/';
 const SVC={
   photon:'https://photon.komoot.io',
   nominatim:'https://nominatim.openstreetmap.org',
   osrm:['https://router.project-osrm.org/route/v1/driving/','https://routing.openstreetmap.de/routed-car/route/v1/driving/'],
-  sat:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  sat:ARC?'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token='+ARC:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   vtJson:'https://tiles.openfreemap.org/planet',
-  base:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-  baseSat:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+  style:'https://tiles.openfreemap.org/styles/liberty'
 };
 const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -509,8 +560,8 @@ function tileDist(tx,ty,fx,fy){return Math.hypot(Math.max(tx-fx,0,fx-tx-1),Math.
 const HIGH_R=[0,720,2700];
 function imgUpdate(px,pz,fx,fz,high){
   if(W.mapMode)return;const now=performance.now();
-  for(let li=0;li<LV.length;li++){const L=LV[li],M=W.img[li];const lr=high?HIGH_R[li]:L.r;
-    const [cx,cy]=PR.tile(L.z,px+fx*lr*0.35,pz+fz*lr*0.35);const S=C/Math.pow(2,L.z)*PR.k;const rt=lr/S;const need=[];if(lr>0)
+  for(let li=0;li<LV.length;li++){const L=LV[li],M=W.img[li];const lr=high?HIGH_R[li]:(li===0&&S.gfx==='leve'?0:L.r);
+    const [cx,cy]=PR.tile(L.z,px+fx*lr*0.35,pz+fz*lr*0.35);const TS=C/Math.pow(2,L.z)*PR.k;const rt=lr/TS;const need=[];if(lr>0)
     for(let ty=Math.floor(cy-rt);ty<=Math.floor(cy+rt);ty++)for(let tx=Math.floor(cx-rt);tx<=Math.floor(cx+rt);tx++){
       const d=tileDist(tx,ty,cx,cy);if(d>rt)continue;const k=tx+'/'+ty;const rec=M.get(k);
       if(!rec)need.push([d,tx,ty,k]);else if(rec.state===4&&now-rec.t>6000)M.delete(k);}
@@ -1139,7 +1190,17 @@ function renderPts(){
 function setActive(i){PL.active=i;$('pts').querySelectorAll('.pt').forEach(el=>el.classList.toggle('on',+el.dataset.i===i));}
 function featLabel(f){const p=f.properties||{};const main=p.name||[p.street,p.housenumber].filter(Boolean).join(', ')||p.city||p.country||'Ponto';
   const sub=[p.name&&p.street?[p.street,p.housenumber].filter(Boolean).join(', '):'',p.district,p.city!==main?p.city:'',p.state,p.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', ');return [main,sub];}
+function arcNear(){const c=PL.map&&PL.pts.some(p=>p.lat!=null)?PL.map.getCenter():null;return c?'&location='+c.lng.toFixed(4)+','+c.lat.toFixed(4):'';}
+function arcLabel(text){const s=String(text||'').split(', ');return {main:s[0]||'Ponto',sub:s.slice(1,4).join(', ')};}
+// endereço exato (1 consulta cobrada); com magicKey resolve uma sugestão já escolhida
+async function arcFind(text,magic){
+  const r=await fetch(ARCGEO+'findAddressCandidates?f=json&maxLocations=1&langCode=pt&outFields=PlaceName,Place_addr&SingleLine='+encodeURIComponent(text)+(magic?'&magicKey='+encodeURIComponent(magic):'')+arcNear()+'&token='+ARC);
+  if(!r.ok)throw new Error('http');const j=await r.json();if(j.error)throw new Error(j.error.message);const c=(j.candidates||[])[0];if(!c)return [];
+  const a=c.attributes||{},l=arcLabel(c.address);return [{lat:c.location.y,lon:c.location.x,main:a.PlaceName||l.main,sub:a.Place_addr&&a.PlaceName?a.Place_addr:l.sub}];}
 async function geoSearch(q,limit){
+  if(ARC){try{if(limit===1)return await arcFind(q);
+      const r=await fetch(ARCGEO+'suggest?f=json&maxSuggestions='+limit+'&text='+encodeURIComponent(q)+arcNear()+'&token='+ARC);if(!r.ok)throw new Error('http');const j=await r.json();if(j.error)throw new Error(j.error.message);
+      return (j.suggestions||[]).map(s=>Object.assign({magic:s.magicKey,text:s.text},arcLabel(s.text)));}catch(e){return null;}}
   const c=PL.map?PL.map.getCenter():null;
   try{const r=await fetch(SVC.photon+'/api/?q='+encodeURIComponent(q)+'&limit='+limit+(c&&PL.pts.some(p=>p.lat!=null)?'&lat='+c.lat.toFixed(4)+'&lon='+c.lng.toFixed(4):''));
     if(r.ok){const j=await r.json();if(j.features&&j.features.length)return j.features.map(f=>{const [m,s]=featLabel(f);return {lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],main:m,sub:s};});}}catch(e){}
@@ -1153,9 +1214,11 @@ async function suggest(i,pickFirst){
   const seq=++PL.seq;const list=await geoSearch(q,5);if(seq!==PL.seq||PL.pts[i]!==p)return;
   if(list===null){box.hidden=true;setSum('Não consegui acessar a busca de endereços. Confira a internet ou toque no mapa para marcar o ponto.',true);return;}
   if(!list.length){box.hidden=false;box.innerHTML='<button disabled><small>Nada encontrado. Tente incluir a cidade.</small></button>';return;}
-  if(pickFirst){setPoint(i,list[0].lat,list[0].lon,list[0].main+(list[0].sub?', '+list[0].sub.split(', ')[0]:''));return;}
+  const choose=async o=>{if(o.magic){try{const r=await arcFind(o.text,o.magic);if(!r.length)return;o=r[0];}catch(e){setSum('Não consegui buscar esse endereço agora. Tente de novo ou toque no mapa.',true);return;}}
+    setPoint(i,o.lat,o.lon,o.main+(o.sub?', '+o.sub.split(', ')[0]:''));};
+  if(pickFirst){choose(list[0]);return;}
   box.hidden=false;box.innerHTML=list.map((o,k)=>'<button data-k="'+k+'"><b>'+esc(o.main)+'</b><small>'+esc(o.sub)+'</small></button>').join('');
-  box.querySelectorAll('button').forEach(b=>b.onclick=()=>{const o=list[+b.dataset.k];setPoint(i,o.lat,o.lon,o.main+(o.sub?', '+o.sub.split(', ')[0]:''));});
+  box.querySelectorAll('button').forEach(b=>b.onclick=()=>choose(list[+b.dataset.k]));
 }
 function setPoint(i,lat,lon,label){
   const p=PL.pts[i];if(!p)return;p.lat=lat;p.lon=lon;p.q=label;const inp=$('pt'+i);if(inp)inp.value=label;const box=$('sug'+i);if(box)box.hidden=true;
@@ -1167,6 +1230,8 @@ function refreshMarkers(){
     mk.on('dragend',()=>{const ll=mk.getLatLng();setPoint(i,ll.lat,ll.lng,ll.lat.toFixed(5)+', '+ll.lng.toFixed(5));reverseLabel(i);});PL.markers.push(mk);});
 }
 async function reverseLabel(i){const p=PL.pts[i];const lat=p.lat,lon=p.lon;
+  if(ARC){try{const r=await fetch(ARCGEO+'reverseGeocode?f=json&langCode=pt&location='+lon+','+lat+'&token='+ARC);if(!r.ok)return;const j=await r.json();const a=j.address;if(!a||PL.pts[i]!==p||p.lat!==lat)return;
+      p.q=(a.ShortLabel||a.Match_addr||a.Address||'Ponto')+(a.City&&!(a.ShortLabel||'').includes(a.City)?', '+a.City:'');const inp=$('pt'+i);if(inp)inp.value=p.q;}catch(e){}return;}
   try{const r=await fetch(SVC.photon+'/reverse?lat='+lat+'&lon='+lon);if(!r.ok)return;const j=await r.json();if(!j.features||!j.features.length||PL.pts[i]!==p||p.lat!==lat)return;
     const [m,s]=featLabel(j.features[0]);p.q=m+(s?', '+s.split(', ')[0]:'');const inp=$('pt'+i);if(inp)inp.value=p.q;}catch(e){}}
 function parseGmaps(t){const m=String(t).match(/google\.[a-z.]+\/maps\/dir\/([^?#]*)/i);if(!m)return null;
@@ -1204,11 +1269,18 @@ async function doRoute(fit){
   }
   if(circ)way.push(way[0]);
   PL.busy=true;goState();setSum('Calculando a rota…');
-  const path=way.map(w=>w[0].toFixed(6)+','+w[1].toFixed(6)).join(';')+'?overview=full&geometries=geojson&continue_straight=false';let res=null;
-  for(const host of SVC.osrm){try{const r=await fetch(host+path);if(!r.ok)continue;const j=await r.json();if(j.code==='Ok'&&j.routes&&j.routes.length){res=j.routes[0];break;}if(j.code==='NoRoute'){res=0;break;}}catch(e){}}
+  let res=null;
+  if(ARC){try{const body=new URLSearchParams({f:'json',token:ARC,stops:way.map(w=>w[0].toFixed(6)+','+w[1].toFixed(6)).join(';'),returnRoutes:'true',returnDirections:'false',returnStops:'false',outSR:'4326'});
+      const r=await fetch('https://route-api.arcgis.com/arcgis/rest/services/World/Route/NAServer/Route_World/solve',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const j=await r.json();
+      const f=j.routes&&j.routes.features&&j.routes.features[0];
+      if(f&&f.geometry&&f.geometry.paths){const c=[];for(const p of f.geometry.paths)for(const q of p)c.push([q[0],q[1]]);res={geometry:{coordinates:c},distance:(f.attributes.Total_Kilometers||0)*1000};}
+      else if(j.error&&/solution|locate|route/i.test(JSON.stringify(j.error)))res=0;}catch(e){}}
+  const path=way.map(w=>w[0].toFixed(6)+','+w[1].toFixed(6)).join(';')+'?overview=full&geometries=geojson&continue_straight=false';
+  if(!ARC)for(const host of SVC.osrm){try{const r=await fetch(host+path);if(!r.ok)continue;const j=await r.json();if(j.code==='Ok'&&j.routes&&j.routes.length){res=j.routes[0];break;}if(j.code==='NoRoute'){res=0;break;}}catch(e){}}
   if(seq!==PL.rseq)return;PL.busy=false;
   if(!res){goState();setSum(res===0?'Não existe caminho de carro entre esses pontos. Escolha outros.':'Não consegui calcular a rota agora. Confira a internet e tente de novo.',true);$('go').disabled=true;return;}
-  const coords=despike(res.geometry.coordinates);const dist=res.distance;
+  const coords=despike(res.geometry.coordinates);let dist=res.distance;
+  if(!(dist>0)){dist=0;for(let k=1;k<coords.length;k++){const a=coords[k-1],b=coords[k],kx=Math.cos(a[1]*D2R);dist+=Math.hypot((b[0]-a[0])*111320*kx,(b[1]-a[1])*110540);}}
   if(dist>3000000){goState();$('go').disabled=true;setSum('Trajeto longo demais (mais de 3.000 km). Escolha pontos mais próximos.',true);return;}
   PL.route={coords,dist,closed:circ};
   if(PL.map){PL.line=L.polyline(coords.map(c=>[c[1],c[0]]),{color:'#ffb300',weight:5,opacity:.95}).addTo(PL.map);if(fit)PL.map.fitBounds(PL.line.getBounds(),{padding:[30,30]});}
@@ -1247,10 +1319,14 @@ function initMenu(){
     el.onchange=()=>{const v=el.value;if(v==='')return;$(id==='selF1'?'selIndy':'selF1').value='';pickCircuit(+v);};}
   if(window.L){
     const map=L.map('map',{zoomControl:true,attributionControl:true}).setView([-25.4735,-49.2265],13);PL.map=map;
-    const street=L.tileLayer(SVC.base,{maxZoom:19,attribution:'© Esri · © OpenStreetMap'}),satl=L.tileLayer(SVC.baseSat,{maxZoom:19,attribution:'© Esri, Maxar'});street.addTo(map);
+    const street=L.maplibreGL?L.maplibreGL({style:SVC.style,attribution:'<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'}):L.layerGroup(),
+      satl=L.tileLayer(SVC.sat,{maxZoom:19,attribution:(ARC?'Powered by Esri · ':'')+'Esri, Maxar, Earthstar Geographics'});street.addTo(map);
+    map.attributionControl.addAttribution('<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> © <a href="https://www.openmaptiles.org/" target="_blank">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>');
     L.control.layers({'Mapa':street,'Satélite':satl},null,{position:'topright',collapsed:false}).addTo(map);
     map.on('click',e=>{const i=PL.active;setPoint(i,e.latlng.lat,e.latlng.lng,e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5));reverseLabel(i);});
   }else{$('map').outerHTML='<p class="sum err">O mapa de pré-visualização não carregou. A busca por endereço continua funcionando.</p>';}
+  $('abGeoTxt').textContent=ARC?'Esri (ArcGIS Location Platform).':'Photon/Komoot, Nominatim e OSRM (serviços públicos, uso pessoal).';
+  $('openAbout').onclick=()=>{$('about').hidden=false;};$('closeAbout').onclick=()=>{$('about').hidden=true;};
   $('addStop').onclick=()=>{if(PL.pts.length>=6)return;PL.pts.splice(PL.pts.length-1,0,{q:'',lat:null,lon:null});PL.active=PL.pts.length-2;renderPts();const el=$('pt'+PL.active);if(el)el.focus();};
   $('swap').onclick=()=>{PL.pts.reverse();renderPts();refreshMarkers();reroute(true);};
   $('here').onclick=()=>{if(!navigator.geolocation){setSum('Este navegador não informa a localização. Digite o endereço.',true);return;}
@@ -1289,6 +1365,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)pause();});
 const pad=(id,k)=>{const b=$(id);const on=e=>{e.preventDefault();touch[k]=1;b.classList.add('on');try{b.setPointerCapture(e.pointerId);}catch(_){}};const off=()=>{touch[k]=0;b.classList.remove('on');};
   b.addEventListener('pointerdown',on);b.addEventListener('pointerup',off);b.addEventListener('pointercancel',off);b.addEventListener('lostpointercapture',off);b.addEventListener('contextmenu',e=>e.preventDefault());};
 pad('pL','L');pad('pR','R');pad('pA','A');pad('pB','B');
+$('attr').textContent=(ARC?'Powered by Esri · ':'')+'Imagens Esri, Maxar, Earthstar Geographics · Mapa OpenFreeMap © OpenMapTiles © OpenStreetMap · Relevo Mapzen/AWS'+(ARC?'':' · Rotas OSRM');
 initMenu();requestAnimationFrame(loop);
 </script>
 </body>
