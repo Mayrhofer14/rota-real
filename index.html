@@ -473,7 +473,7 @@ function treesStep(){
 const clouds=(()=>{const cv=document.createElement('canvas');cv.width=256;cv.height=128;const c=cv.getContext('2d');let s=11;const rnd=()=>{s=(s*16807)%2147483647;return s/2147483647;};
   for(let i=0;i<22;i++){const x=40+rnd()*176,y=52+rnd()*36,r=18+rnd()*30;const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,'rgba(255,255,255,.75)');g.addColorStop(1,'rgba(255,255,255,0)');c.fillStyle=g;c.fillRect(0,0,256,128);}
   const mat=new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),fog:false,depthWrite:false,transparent:true});const grp=new THREE.Group();
-  for(let i=0;i<18;i++){const sp=new THREE.Sprite(mat);const a=rnd()*6.283,d=900+rnd()*1700,w=520+rnd()*520;sp.position.set(Math.cos(a)*d,430+rnd()*420,Math.sin(a)*d);sp.scale.set(w,w*0.42,1);sp.renderOrder=-44;grp.add(sp);}
+  for(let i=0;i<18;i++){const sp=new THREE.Sprite(mat);const a=rnd()*6.283,d=1500+rnd()*1500,w=520+rnd()*520;sp.position.set(Math.cos(a)*d,950+rnd()*650,Math.sin(a)*d);sp.scale.set(w,w*0.42,1);sp.renderOrder=-44;grp.add(sp);}
   scene.add(grp);grp.userData.mat=mat;return grp;})();
 function applyTOD(){
   const t=TOD[S.tod],hi=S.gfx==='alto';HAZE.set(t.fog);scene.fog.color.set(t.fog);ENV.fogN=t.fogN;ENV.fogF=t.fogF;scene.fog.near=t.fogN;scene.fog.far=t.fogF;
