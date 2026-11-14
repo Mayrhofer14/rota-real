@@ -82,6 +82,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
 .colors{display:flex;flex-wrap:wrap;gap:8px}
 .colors button{width:34px;height:34px;border-radius:50%;border:2px solid var(--line)}
 .colors button[aria-pressed="true"]{border-color:var(--fg);box-shadow:0 0 0 2px var(--signal)}
+.lapsel{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;background:var(--slab-solid);border:1px solid var(--line);border-radius:6px;padding:3px}
+.lapsel button{height:38px;border:0;border-radius:4px;background:var(--line);font-size:22px;font-weight:700}
+.lapsel b{text-align:center;font-family:var(--display);font-size:22px;font-variant-numeric:tabular-nums}
 .seg{display:flex;background:var(--slab-solid);border:1px solid var(--line);border-radius:6px;padding:3px;gap:3px}
 .seg button{flex:1;background:none;border:0;border-radius:4px;padding:8px 0;font-family:var(--display);font-weight:700;font-size:17px}
 .seg button[aria-pressed="true"]{background:var(--signal);color:var(--signal-ink)}
@@ -257,8 +260,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline
       <div class="row2">
         <div class="sect"><div class="lbl">Adversários</div>
           <div class="seg" id="segOpp"><button data-v="0" aria-pressed="false">0</button><button data-v="3" aria-pressed="false">3</button><button data-v="5" aria-pressed="true">5</button><button data-v="6" aria-pressed="false">6</button></div></div>
-        <div class="sect" id="lapsBox" hidden><div class="lbl">Voltas</div>
-          <div class="seg" id="segLaps"><button data-v="1" aria-pressed="false">1</button><button data-v="2" aria-pressed="true">2</button><button data-v="3" aria-pressed="false">3</button></div></div>
+        <div class="sect" id="lapsBox"><div class="lbl">Voltas</div>
+          <div class="lapsel"><button id="lapMinus" aria-label="Menos voltas">−</button><b id="lapN">2</b><button id="lapPlus" aria-label="Mais voltas">+</button></div></div>
       </div>
 
       <div class="row2">
@@ -1294,11 +1297,12 @@ async function applyTexts(parts,circuit){
 }
 
 function despike(c){const out=[];for(const p of c){const n=out.length;
-  if(n>=2&&Math.abs(out[n-2][0]-p[0])<1e-6&&Math.abs(out[n-2][1]-p[1])<1e-6)out.pop();
+  // só remove espetos curtos (ida e volta de poucos metros); o retorno de um trajeto de ida e volta fica
+  if(n>=2&&Math.abs(out[n-2][0]-p[0])<1e-6&&Math.abs(out[n-2][1]-p[1])<1e-6&&Math.hypot((out[n-1][0]-p[0])*111320*Math.cos(p[1]*D2R),(out[n-1][1]-p[1])*110540)<25)out.pop();
   else if(!n||Math.abs(out[n-1][0]-p[0])>1e-7||Math.abs(out[n-1][1]-p[1])>1e-7)out.push(p);}return out;}
 function setSum(t,err){const n=$('sum');n.innerHTML=t;n.className='sum'+(err?' err':'');}
 function goState(){
-  const start=PL.pts[0].lat!=null,circ=$('circ').checked,go=$('go');$('lapsBox').hidden=!circ;
+  const start=PL.pts[0].lat!=null,circ=$('circ').checked,go=$('go');$('lapN').textContent=circ?S.laps:1;
   if(!start){go.disabled=true;go.textContent='Largar';return;}
   if(PL.busy){go.disabled=true;go.textContent='Calculando…';return;}
   go.disabled=false;go.textContent=PL.route?'Largar':'Passear livre';
@@ -1335,7 +1339,7 @@ async function doRoute(fit){
   updateSum();goState();
 }
 function updateSum(){if(!PL.route)return;const laps=PL.route.closed?S.laps:1,d=PL.route.dist*laps;const mins=d/(SPEC[carKey()].max*0.6)/60;
-  setSum((PL.fixed?'<b>'+esc(PL.fixed)+'</b> · ':'')+'<b>'+fmtKm(d)+'</b>'+(PL.route.closed?' em '+laps+(laps>1?' voltas':' volta'):'')+' · cerca de <b>'+(mins<1?'1 min':mins<90?Math.round(mins)+' min':(mins/60).toFixed(1).replace('.',',')+' h')+'</b> de '+carLabel()+
+  setSum((PL.fixed?'<b>'+esc(PL.fixed)+'</b> · ':'')+'<b>'+fmtKm(d)+'</b>'+(PL.route.closed?' em '+laps+(laps>1?' voltas':' volta')+(PL.pts.filter(p=>p.lat!=null).length===2&&!PL.fixed?' (ida e volta)':''):'')+' · cerca de <b>'+(mins<1?'1 min':mins<90?Math.round(mins)+' min':(mins/60).toFixed(1).replace('.',',')+' h')+'</b> de '+carLabel()+
     (PL.pts.filter(p=>p.lat!=null).length<2&&!PL.fixed?' · <button class="link" id="reroll">Sortear outro circuito</button>':'')+(REC.get(REC.key())?'<br>Seu recorde aqui: <b>'+fmt(REC.get(REC.key()).t)+'</b>':''));
   const rb=$('reroll');if(rb)rb.onclick=()=>{PL.loopA=Math.random()*6.28;reroute(true);};}
 
@@ -1378,7 +1382,10 @@ function initMenu(){
   $('swap').onclick=()=>{PL.pts.reverse();renderPts();refreshMarkers();reroute(true);};
   $('here').onclick=()=>{if(!navigator.geolocation){setSum('Este navegador não informa a localização. Digite o endereço.',true);return;}
     navigator.geolocation.getCurrentPosition(p=>{setPoint(0,p.coords.latitude,p.coords.longitude,'Minha localização');reverseLabel(0);},()=>setSum('Não consegui ler sua localização. Digite o endereço ou toque no mapa.',true),{timeout:8000});};
-  $('circ').onchange=()=>reroute(true);
+  // voltas: de 1 a 50; escolher mais de 1 num trajeto A→B liga o circuito fechado (a rota volta à largada)
+  const setLaps=n=>{S.laps=clamp(n,1,50);if(S.laps>1&&!$('circ').checked){$('circ').checked=true;if(!PL.fixed)reroute(true);}$('lapN').textContent=$('circ').checked?S.laps:1;updateSum();goState();};
+  $('lapMinus').onclick=()=>setLaps(($('circ').checked?S.laps:1)-1);$('lapPlus').onclick=()=>setLaps(($('circ').checked?S.laps:1)+1);
+  $('circ').onchange=()=>{if(!$('circ').checked)S.laps=1;else if(S.laps<2)S.laps=2;$('lapN').textContent=$('circ').checked?S.laps:1;reroute(true);};
   const SIL={hatch:'M8 27v-9l10-3 12-8h28l14 8 20 3 8 5v4z',ev:'M8 27v-9q2-3 8-4l14-7h30q10 2 18 8l18 4q6 2 6 5v3z',suv:'M6 27v-12l10-2 10-9h38l12 9 24 2 6 5v7z',sedan:'M6 26v-8l10-2 14-9h40l16 9 22 2 6 5v3z',pickup:'M4 27v-12h50v-9h20l12 9 22 2 6 5v5z'};
   const saveCar=()=>{store.set('rr-car',JSON.stringify({car:S.car,model:S.model,color:S.color}));};
   try{const o=JSON.parse(store.get('rr-car')||'{}');if(o.car==='F'||o.car==='S')S.car=o.car;if(MODELS.some(m=>m[0]===o.model))S.model=o.model;if(COLORS.includes(o.color))S.color=o.color;}catch(e){}
@@ -1391,7 +1398,7 @@ function initMenu(){
   $('colors').onclick=e=>{const b=e.target.closest('button');if(b){S.color=b.dataset.c;paintCar();}};
   paintCar();
   const seg=(id,key)=>$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{S[key]=+b.dataset.v;$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));updateSum();});
-  seg('segOpp','opp');seg('segLaps','laps');
+  seg('segOpp','opp');
   const segS=(id,key)=>{const bs=$(id).querySelectorAll('button');bs.forEach(b=>{b.setAttribute('aria-pressed',b.dataset.v===S[key]);b.onclick=()=>{S[key]=b.dataset.v;bs.forEach(x=>x.setAttribute('aria-pressed',x===b));};});};
   segS('segTod','tod');segS('segGfx','gfx');
   $('go').onclick=()=>{if(!$('go').disabled)begin();};
