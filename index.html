@@ -542,6 +542,68 @@ function sampleColor(X,Z,out){
 }
 
 const ROADHW={motorway:7.5,trunk:7,primary:6.5,secondary:6,tertiary:5.5,minor:4.5,service:3,raceway:7,busway:4};
+/* Viadutos: pontes que cruzam a rota (ou outra rua/trilho) viram tabuleiros 3D no alto, com rampas, pilares e parapeito */
+const BRHW=Object.assign({},ROADHW,{rail:2.4,transit:2.4,path:1.3});
+const DECKMAT=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+const SHADEMAT=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+SHARED.add(DECKMAT);SHARED.add(SHADEMAT);
+function segCross(ax,az,bx,bz,cx,cz,dx,dz){const rx=bx-ax,rz=bz-az,sx=dx-cx,sz=dz-cz,den=rx*sz-rz*sx;if(Math.abs(den)<1e-9)return false;
+  const t=((cx-ax)*sz-(cz-az)*sx)/den,u=((cx-ax)*rz-(cz-az)*rx)/den;return t>0.02&&t<0.98&&u>0.02&&u<0.98;}
+function eachCell(ax,az,bx,bz,pad,fn){for(let x=Math.floor((Math.min(ax,bx)-pad)/32);x<=Math.floor((Math.max(ax,bx)+pad)/32);x++)for(let z=Math.floor((Math.min(az,bz)-pad)/32);z<=Math.floor((Math.max(az,bz)+pad)/32);z++)fn(cellKey(x,z));}
+function routeNear(x,z){if(!RT)return null;const l=RT.index.get(cellKey(Math.floor(x/32),Math.floor(z/32)));if(!l)return null;const S_=RT.segs;let r=null,bd=1e9;
+  for(const i of l){const o=i*5,ax=S_[o],az=S_[o+1],ex=S_[o+2]-ax,ez=S_[o+3]-az,l2=ex*ex+ez*ez;let t=l2>0?((x-ax)*ex+(z-az)*ez)/l2:0;t=t<0?0:t>1?1:t;const d=Math.hypot(x-ax-ex*t,z-az-ez*t);if(d<bd){bd=d;r={d,dx:ex,dz:ez,hw:S_[o+4]};}}
+  return r;}
+function buildBridges(rec){
+  const list=rec.bridgeRaw,U=rec.under,UI=rec.underIdx;rec.bridgeRaw=null;rec.under=null;rec.underIdx=null;if(!list||!RT)return;
+  const ends=[];list.forEach((b,k)=>{const p=b.pts,n=p.length;ends.push([p[0],p[1],k,0],[p[n-2],p[n-1],k,1]);});
+  const linked=(k,e,x,z)=>ends.some(q=>(q[2]!==k||q[3]!==e)&&Math.abs(q[0]-x)<2&&Math.abs(q[1]-z)<2);
+  const underNear=(x,z,pad)=>{const l=UI.get(cellKey(Math.floor(x/32),Math.floor(z/32)));if(!l)return false;for(const i of l){const o=i*5,ax=U[o],az=U[o+1],ex=U[o+2]-ax,ez=U[o+3]-az,l2=ex*ex+ez*ez;let t=l2>0?((x-ax)*ex+(z-az)*ez)/l2:0;t=t<0?0:t>1?1:t;if(Math.hypot(x-ax-ex*t,z-az-ez*t)<U[o+4]+pad)return true;}return false;};
+  const P=[],N=[],Cl=[],SP=[],D=[],idx=new Map();let built=0;
+  const quad=(a,b,c,d,nx,ny,nz,col)=>{P.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2],c[0],c[1],c[2],b[0],b[1],b[2],d[0],d[1],d[2]);for(let q=0;q<6;q++){N.push(nx,ny,nz);Cl.push(col[0],col[1],col[2]);}};
+  const ASP=[0.25,0.26,0.28],UND=[0.36,0.36,0.37],CON=[0.72,0.71,0.68],PIL=[0.62,0.61,0.58];
+  const pillar=(x,z,g,top,s)=>{const c=[[x-s,z-s],[x+s,z-s],[x+s,z+s],[x-s,z+s]];for(let q=0;q<4;q++){const a=c[q],b=c[(q+1)%4],nx=(b[1]-a[1])/(2*s),nz=-(b[0]-a[0])/(2*s);quad([a[0],g,a[1]],[a[0],top,a[1]],[b[0],g,b[1]],[b[0],top,b[1]],nx,0,nz,PIL);}};
+  for(let k=0;k<list.length&&built<160;k++){const b=list[k],p=b.pts,n=p.length/2;
+    let len=0,crossU=false,crossR=false,par=0,smp=0;
+    for(let i=0;i+1<n;i++){const ax=p[i*2],az=p[i*2+1],bx=p[i*2+2],bz=p[i*2+3],L=Math.hypot(bx-ax,bz-az);if(L<0.01)continue;len+=L;
+      const m=Math.max(1,Math.round(L/4));for(let s=0;s<m;s++){const x=ax+(bx-ax)*(s+0.5)/m,z=az+(bz-az)*(s+0.5)/m;smp++;const r=routeNear(x,z);
+        if(r&&r.d<16&&Math.abs((r.dx*(bx-ax)+r.dz*(bz-az))/((Math.hypot(r.dx,r.dz)||1)*L))>0.8)par++;}
+      if(!crossR)eachCell(ax,az,bx,bz,0,key=>{const l=RT.index.get(key);if(!l||crossR)return;const S_=RT.segs;for(const i2 of l){const o=i2*5;if(segCross(ax,az,bx,bz,S_[o],S_[o+1],S_[o+2],S_[o+3])){crossR=true;break;}}});
+      if(!crossU&&!crossR)eachCell(ax,az,bx,bz,0,key=>{const l=UI.get(key);if(!l||crossU)return;for(const i2 of l){const o=i2*5;if(segCross(ax,az,bx,bz,U[o],U[o+1],U[o+2],U[o+3])){crossU=true;break;}}});}
+    // só vira viaduto se passa por cima de algo (a rota ou outra rua/trilho) e se não é a própria pista
+    if(len<12||!(crossR||crossU)||par/Math.max(1,smp)>0.3||(b.cls==='path'&&!crossR))continue;built++;
+    const TOP=6.8+(b.layer-1)*6.5,w=b.hw+1,ch=[];for(let i=0;i<n;i++)ch.push([p[i*2],p[i*2+1],TOP,1]);
+    const ramp=(ia,ib,front)=>{const x0=p[ia*2],z0=p[ia*2+1],dx=x0-p[ib*2],dz=z0-p[ib*2+1],l=Math.hypot(dx,dz)||1,R=clamp(TOP*6,26,70),o=[];for(let s=1;s<=4;s++)o.push([x0+dx/l*R*s/4,z0+dz/l*R*s/4,TOP*(1-s/4),0]);return front?o.reverse():o;};
+    if(!b.c0&&!linked(k,0,p[0],p[1]))ch.unshift(...ramp(0,1,true));
+    if(!b.c1&&!linked(k,1,p[(n-1)*2],p[(n-1)*2+1]))ch.push(...ramp(n-1,n-2,false));
+    const m=ch.length,V=[];
+    for(let i=0;i<m;i++){const a=ch[Math.max(0,i-1)],c=ch[Math.min(m-1,i+1)];let tx=c[0]-a[0],tz=c[1]-a[1];const tl=Math.hypot(tx,tz)||1;tx/=tl;tz/=tl;const nx=tz,nz=-tx,g=H(ch[i][0],ch[i][1]),lift=ch[i][2],top=g+Math.max(0.08,lift);
+      V.push({x:ch[i][0],z:ch[i][1],lx:ch[i][0]+nx*w,lz:ch[i][1]+nz*w,rx:ch[i][0]-nx*w,rz:ch[i][1]-nz*w,top,bot:lift>5.5?top-1.15:g-0.6,rail:top+0.95,nx,nz,g,main:ch[i][3]});}
+    let acc=10;
+    for(let i=0;i+1<m;i++){const A=V[i],B=V[i+1];
+      quad([A.lx,A.top,A.lz],[A.rx,A.top,A.rz],[B.lx,B.top,B.lz],[B.rx,B.top,B.rz],0,1,0,ASP);
+      quad([A.lx,A.bot,A.lz],[A.rx,A.bot,A.rz],[B.lx,B.bot,B.lz],[B.rx,B.bot,B.rz],0,-1,0,UND);
+      quad([A.lx,A.bot,A.lz],[A.lx,A.rail,A.lz],[B.lx,B.bot,B.lz],[B.lx,B.rail,B.lz],A.nx,0,A.nz,CON);
+      quad([A.rx,A.bot,A.rz],[A.rx,A.rail,A.rz],[B.rx,B.bot,B.rz],[B.rx,B.rail,B.rz],-A.nx,0,-A.nz,CON);
+      if(A.main&&B.main){
+        SP.push(A.lx,A.g+0.14,A.lz,A.rx,A.g+0.14,A.rz,B.lx,B.g+0.14,B.lz,B.lx,B.g+0.14,B.lz,A.rx,A.g+0.14,A.rz,B.rx,B.g+0.14,B.rz);
+        const di=D.length/7;D.push(A.x,A.z,B.x,B.z,w,A.bot,B.bot);addSeg(idx,di,A.x,A.z,B.x,B.z,w+2);
+        const L=Math.hypot(B.x-A.x,B.z-A.z);acc+=L;
+        while(acc>=24){acc-=24;const u=1-acc/L,x=A.x+(B.x-A.x)*u,z=A.z+(B.z-A.z)*u,bot=A.bot+(B.bot-A.bot)*u,g=A.g+(B.g-A.g)*u,off=w>5?w-1.6:0;
+          for(const sd of off?[-1,1]:[0]){const px=x+A.nx*off*sd,pz=z+A.nz*off*sd,r=routeNear(px,pz);if((r&&r.d<r.hw+2.5)||underNear(px,pz,0.8))continue;pillar(px,pz,g-0.5,bot,0.55);}}}}
+  }
+  if(!P.length)return;
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(N,3));g.setAttribute('color',new THREE.Float32BufferAttribute(Cl,3));
+  const mesh=new THREE.Mesh(g,DECKMAT);mesh.castShadow=mesh.receiveShadow=true;W.group.add(mesh);rec.deckMesh=mesh;
+  if(SP.length){const sg=new THREE.BufferGeometry();sg.setAttribute('position',new THREE.Float32BufferAttribute(SP,3));const sm=new THREE.Mesh(sg,SHADEMAT);sm.renderOrder=-5;W.group.add(sm);rec.shadeMesh=sm;}
+  rec.decks=new Float32Array(D);rec.deckIdx=idx;
+}
+// altura do fundo do viaduto acima de um ponto (para a câmera não atravessar o tabuleiro)
+function deckBottom(x,z){const key=cellKey(Math.floor(x/32),Math.floor(z/32));let b=Infinity;
+  for(const rec of W.vt.values()){if(!rec.deckIdx)continue;const l=rec.deckIdx.get(key);if(!l)continue;const D=rec.decks;
+    for(const i of l){const o=i*7,ax=D[o],az=D[o+1],dx=D[o+2]-ax,dz=D[o+3]-az,l2=dx*dx+dz*dz;let t=l2>0?((x-ax)*dx+(z-az)*dz)/l2:0;t=t<0?0:t>1?1:t;
+      if(Math.hypot(x-ax-dx*t,z-az-dz*t)<D[o+4]+1.5){const y=D[o+5]+(D[o+6]-D[o+5])*t;if(y<b)b=y;}}}
+  return b;}
+function bridgesStep(){if(!RT)return;for(const rec of W.vt.values()){if(rec.bridgeRaw){buildBridges(rec);return;}}}
 function vtUpdate(px,pz,fx,fz,high){
   if(!W.vtUrl)return;const now=performance.now();
   const [cx,cy]=PR.tile(14,px+fx*260,pz+fz*260);const S=C/16384*PR.k;const rt=(high?1000:760)/S;const need=[];
@@ -553,7 +615,8 @@ function vtUpdate(px,pz,fx,fz,high){
   for(const [k,rec] of W.vt){if(rec.state!==1&&tileDist(rec.tx,rec.ty,cx,cy)>rt*2.4+0.5){vtDispose(rec);W.vt.delete(k);}
     else if(W.mapMode&&rec.roads&&!rec.roadMesh)roadMesh(rec);}
 }
-function vtDispose(rec){if(rec.units)for(const u of rec.units.values())if(u.mesh){W.group.remove(u.mesh);u.mesh.geometry.dispose();u.mesh=null;}
+function vtDispose(rec){for(const k of ['deckMesh','shadeMesh'])if(rec[k]){W.group.remove(rec[k]);rec[k].geometry.dispose();rec[k]=null;}rec.deckIdx=null;
+  if(rec.units)for(const u of rec.units.values())if(u.mesh){W.group.remove(u.mesh);u.mesh.geometry.dispose();u.mesh=null;}
   if(rec.roadMesh){W.group.remove(rec.roadMesh);rec.roadMesh.geometry.dispose();}}
 async function gunzipMaybe(buf){const u=new Uint8Array(buf);
   if(u.length>2&&u[0]===0x1f&&u[1]===0x8b&&window.DecompressionStream){const s=new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));return new Uint8Array(await new Response(s).arrayBuffer());}
@@ -568,13 +631,19 @@ function vtParse(rec,u,gen,k){
   const o=PR.origin(14,rec.tx,rec.ty),ox=o[0],oz=o[1],S=o[2];const alive=()=>gen===W.gen&&W.vt.get(k)===rec;
   rec.ox=ox;rec.oz=oz;rec.state=2;
   // 1) ruas dirigíveis
-  const roads=[],index=new Map();
+  const roads=[],index=new Map(),bridges=[],under=[],uidx=new Map();
   if(u.length){const L=readTile(u,{transportation:1}).transportation;
-    if(L){const sc=S/L.extent;for(const f of L.features){if(f.type!==2)continue;let hw=ROADHW[f.props.class];if(!hw)continue;if(f.props.ramp)hw=Math.min(hw,4.5);
+    if(L){const sc=S/L.extent,E=L.extent,clip=(x,y)=>x<=1||y<=1||x>=E-1||y>=E-1;for(const f of L.features){if(f.type!==2)continue;
+      const bw=BRHW[f.props.class],br=f.props.brunnel;
+      if(RT&&bw){if(br==='bridge'){for(const p of f.parts){const nn=p.length;if(nn<4)continue;const pts=new Float64Array(nn);for(let i=0;i<nn;i+=2){pts[i]=ox+p[i]*sc;pts[i+1]=oz+p[i+1]*sc;}
+          bridges.push({cls:f.props.class,hw:f.props.ramp?Math.min(bw,4.5):bw,layer:clamp(Math.round(+f.props.layer||1),1,3),pts,c0:clip(p[0],p[1]),c1:clip(p[nn-2],p[nn-1])});}}
+        else if(br!=='tunnel'&&f.props.class!=='path')for(const p of f.parts)for(let i=0;i+3<p.length;i+=2){const ax=ox+p[i]*sc,az=oz+p[i+1]*sc,bx=ox+p[i+2]*sc,bz=oz+p[i+3]*sc;addSeg(uidx,under.length/5,ax,az,bx,bz,bw+2);under.push(ax,az,bx,bz,bw);}}
+      let hw=ROADHW[f.props.class];if(!hw)continue;if(f.props.ramp)hw=Math.min(hw,4.5);
       if(f.props.class==='service'&&(f.props.service==='parking_aisle'||f.props.service==='driveway'))continue;
       for(const p of f.parts)for(let i=0;i+3<p.length;i+=2){const ax=ox+p[i]*sc,az=oz+p[i+1]*sc,bx=ox+p[i+2]*sc,bz=oz+p[i+3]*sc;if(ax===bx&&az===bz)continue;
         addSeg(index,roads.length/5,ax,az,bx,bz,hw+9);roads.push(ax,az,bx,bz,hw);}}}}
   rec.roads=new Float32Array(roads);rec.index=index;rec.stage=1;
+  if(bridges.length){rec.bridgeRaw=bridges;rec.under=new Float32Array(under);rec.underIdx=uidx;}
   // 2) prédios, agrupados em células de 256 m
   setTimeout(()=>{if(!alive()||!u.length){rec.stage=3;return;}
     const units=new Map();const L=readTile(u,{building:1}).building;
@@ -964,6 +1033,8 @@ function camPose(o){const P=race.player,sp=SPEC[P.type],R=race,m=S.cam;
 function chaseCam(dt,snap){
   const P=race.player,sp=SPEC[P.type],R=race;R.camH+=wrapA(P.h-R.camH)*(snap?1:1-Math.exp(-(S.cam===2?2:4.5)*dt));camPose(_po);const k=snap?1:1-Math.exp(-8*dt);
   camera.position.x+=(_po.px-camera.position.x)*k;camera.position.z+=(_po.pz-camera.position.z)*k;camera.position.y+=(_po.py-camera.position.y)*k;
+  if(S.cam!==2){let db=Infinity;for(let s=0;s<=6;s++){const u=s/6;db=Math.min(db,deckBottom(P.x+(camera.position.x-P.x)*u,P.z+(camera.position.z-P.z)*u));}   // viaduto entre o carro e a câmera: a câmera desce para baixo dele
+    if(db<1e9&&P.y<db-1.5&&camera.position.y>db-0.6)camera.position.y=db-0.6;}
   if(FX.shake>0.02){camera.position.x+=(Math.random()-0.5)*FX.shake*0.5;camera.position.y+=(Math.random()-0.5)*FX.shake*0.35;}camera.lookAt(_po.tx,_po.ty,_po.tz);
   const f=(S.cam===2?50:62)+clamp(P.v/sp.max,0,1)*(S.cam===2?4:14);if(Math.abs(camera.fov-f)>0.2){camera.fov=f;camera.updateProjectionMatrix();}
 }
@@ -1033,7 +1104,7 @@ function worldTick(){
   const P=race.player,hi=S.state==='loading';let x=P.x,z=P.z,fx=Math.sin(P.h),fz=Math.cos(P.h);if(hi){x=INTRO.cx;z=INTRO.cz;fx=fz=0;}W.frame++;
   if(W.frame%6===1)imgUpdate(x,z,fx,fz,hi);
   if(W.frame%20===2)vtUpdate(x,z,fx,fz,hi);
-  unitsStep(x,z,fx,fz,hi);if(W.frame%3===0)treesStep();if(DEM.on&&W.frame%90===5)demNeed(P.x,P.z,4200);
+  unitsStep(x,z,fx,fz,hi);if(W.frame%3===0)treesStep();else bridgesStep();if(DEM.on&&W.frame%90===5)demNeed(P.x,P.z,4200);
 }
 let lastT=performance.now();
 function loop(now){
