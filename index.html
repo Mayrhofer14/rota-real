@@ -1482,7 +1482,7 @@ function fbLoad(){if(window.firebase&&firebase.database)return Promise.resolve()
   const load=s=>new Promise((ok,no)=>{const e=document.createElement('script');e.src=base+s;e.onload=ok;e.onerror=()=>no(new Error(s));document.head.appendChild(e);});
   return load('firebase-app-compat.js').then(()=>load('firebase-auth-compat.js')).then(()=>load('firebase-database-compat.js'));}
 async function mpConnect(){if(MP.db)return;if(!KEYS.firebase)throw new Error('cfg');await fbLoad();if(!firebase.apps.length)firebase.initializeApp(KEYS.firebase);
-  const c=await firebase.auth().signInAnonymously();MP.uid=c.user.uid;MP.db=firebase.database();const o=await MP.db.ref('.info/serverTimeOffset').once('value');MP.offset=o.val()||0;}
+  try{await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION);}catch(e){}const c=await firebase.auth().signInAnonymously();MP.uid=c.user.uid;MP.db=firebase.database();const o=await MP.db.ref('.info/serverTimeOffset').once('value');MP.offset=o.val()||0;}
 const mpRef=p=>MP.db.ref('rooms/'+MP.code+(p?'/'+p:''));
 function encPoly(c){const A='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';let o='',px=0,py=0;
   const e=v=>{v=v<0?-v*2-1:v*2;let s='';do{let d=v%32;v=Math.floor(v/32);if(v)d+=32;s+=A[d];}while(v);return s;};
