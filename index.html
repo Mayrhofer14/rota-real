@@ -660,7 +660,7 @@ function buildTrees(rec){
     const u=(i+0.2+h1*0.6)/n,v=(j+0.2+h2*0.6)/n,px=clamp(Math.round(u*256),2,253),py=clamp(Math.round(v*256),2,253);let r=0,g=0,b=0,s=0,s2=0;
     for(let a=-2;a<=2;a++)for(let q=-2;q<=2;q++){const k=((py+a)*256+px+q)*4,R=d[k],G=d[k+1],B=d[k+2];r+=R;g+=G;b+=B;const l=0.3*R+0.59*G+0.11*B;s+=l;s2+=l*l;}
     r/=25;g/=25;b/=25;const lum=s/25,sd=Math.sqrt(Math.max(0,s2/25-lum*lum));if(!(g>r+6&&g>b+10)||!(sd>6.5||lum<68))continue;
-    const X=o[0]+u*Sz,Z=o[1]+v*Sz;const nr=nearest(X,Z);if(nr&&nr.d<nr.hw+1.4)continue;list.push([u*Sz,v*Sz,r,g,b,h1,h2,H(X,Z)]);}
+    const X=o[0]+u*Sz,Z=o[1]+v*Sz;const nr=nearest(X,Z);if(nr&&nr.d<nr.hw+1.4)continue;if(W.stads&&W.stads.some(s=>Math.hypot(s.cx-X,s.cz-Z)<Math.sqrt(s.area)&&inPoly(s.p,s.p.length/2,X,Z)))continue;list.push([u*Sz,v*Sz,r,g,b,h1,h2,H(X,Z)]);}
   if(list.length>cap){const st=list.length/cap,l2=[];for(let k=0;k<cap;k++)l2.push(list[Math.floor(k*st)]);list=l2;}
   if(!list.length)return;const m=list.length;const tr=new THREE.InstancedMesh(TREE.trunk,TREE.bark,m),cp=new THREE.InstancedMesh(hi?TREE.hi:TREE.lo,TREE.leaf,m);
   for(let k=0;k<m;k++){const q=list[k],hgt=5+q[5]*6,rad=2+q[6]*2.2;_tq.setFromAxisAngle(_ty,q[5]*6.28);
@@ -700,7 +700,7 @@ let RT=null; // rota atual
 function resetWorld(){
   if(W.group){W.group.traverse(o=>{if(o.geometry&&!SHARED.has(o.geometry))o.geometry.dispose();
       if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{if(SHARED.has(m))return;if(m.map)m.map.dispose();m.dispose();});});scene.remove(W.group);}
-  W.group=new THREE.Group();scene.add(W.group);W.img=[new Map(),new Map(),new Map()];W.vt=new Map();W.act={n:0};W.vact={n:0};W.gen++;W.satOk=0;W.satFail=0;W.mapMode=false;
+  W.group=new THREE.Group();scene.add(W.group);W.img=[new Map(),new Map(),new Map()];W.vt=new Map();W.stads=[];W.act={n:0};W.vact={n:0};W.gen++;W.satOk=0;W.satFail=0;W.mapMode=false;
   baseMat.color.set(0x6b7466).multiply(ENV.ground);
 }
 function toBitmap(blob){
@@ -870,9 +870,11 @@ function vtParse(rec,u,gen,k){
       const q=new Float32Array(n*2);let cx=0,cz=0;for(let i=0;i<n;i++){const src=a>0?i:n-1-i;q[i*2]=ox+p[src*2]*sc;q[i*2+1]=oz+p[src*2+1]*sc;cx+=q[i*2];cz+=q[i*2+1];}cx/=n;cz/=n;
       let cov=0;near(cx,cz,b=>{if(b.kind!=='stadium'&&inPoly(q,n,b.cx,b.cz))cov+=b.area;});const hs=Math.abs(Math.sin(cx*12.9898+cz*78.233)*43758.5453)%1;
       if(cov<0.25*area){const st={p:q,h:13+hs*9,cx,cz,hs,area,kind:'stadium'};addTo(st);stadiums.push(st);}else stadiums.push({p:q,cx,cz,area,kind:'zone'});}}
-    const PO=TL.poi;
+    for(const st of stadiums)W.stads.push(st);
+    const PO=TL.poi,seenPoi=new Map();
     if(PO){const sc=S/PO.extent;for(const f of PO.features){if(f.type!==1||!f.parts[0])continue;const cat=POICAT[f.props.subclass]||POICAT[f.props.class];const nm=f.props.name||f.props['name:latin'];if(!cat||!nm)continue;
-      const X=ox+f.parts[0][0]*sc,Z=oz+f.parts[0][1]*sc;let best=null,bd=1e9;
+      const ex=f.parts[0][0],ey=f.parts[0][1];if(ex<0||ey<0||ex>=PO.extent||ey>=PO.extent)continue;const X=ox+ex*sc,Z=oz+ey*sc;let best=null,bd=1e9;
+      const dk=cat+'|'+nm,prev=seenPoi.get(dk);if(prev&&prev.some(q=>Math.hypot(q[0]-X,q[1]-Z)<300))continue;(prev||seenPoi.set(dk,[]).get(dk)).push([X,Z]);
       if(cat==='stadium')for(const st of stadiums)if(inPoly(st.p,st.p.length/2,X,Z)){if(st.kind==='stadium')best=st;else near(st.cx,st.cz,b=>{if(b.kind!=='stadium'&&b.kind!=='fuel'&&inPoly(st.p,st.p.length/2,b.cx,b.cz)&&(!best||b.area>best.area))best=b;});break;}
       if(!best)near(X,Z,b=>{if(b.kind==='stadium'||b.kind==='fuel')return;if(inPoly(b.p,b.p.length/2,X,Z)){if(bd>0||b.area>best.area){best=b;bd=0;}}else if(bd>0){const d=Math.hypot(b.cx-X,b.cz-Z)-Math.sqrt(b.area)*0.5;if(d<bd&&d<(cat==='fuel'?5:25)){bd=d;best=b;}}});
       if(best){if(!best.sign||(cat==='mall'&&best.sign.cat!=='mall'))best.sign={name:nm,cat};}
